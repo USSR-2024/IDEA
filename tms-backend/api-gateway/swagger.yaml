@@ -2,13 +2,13 @@ openapi: 3.0.0
 info:
   title: TMS API Gateway
   description: Transport Management System API Documentation
-  version: 1.0.0
+  version: 2.0.0
   contact:
     name: TMS Support
     email: support@tms-logistics.ru
     
 servers:
-  - url: http://localhost:3000/api
+  - url: http://localhost:4000/api
     description: Development server
   - url: https://api.tms-logistics.ru/api
     description: Production server
@@ -25,14 +25,11 @@ components:
       type: object
       properties:
         error:
+          type: string
+        message:
+          type: string
+        details:
           type: object
-          properties:
-            code:
-              type: string
-            message:
-              type: string
-            details:
-              type: object
               
     User:
       type: object
@@ -76,7 +73,7 @@ components:
           enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
         delivery_status:
           type: string
-          enum: [awaiting_pickup, picked_up, in_transit, delivered, failed, returned]
+          enum: [awaiting_pickup, picked_up, in_transit, delivered, failed, returned, cancelled]
         order_value:
           type: number
         is_priority:
@@ -91,8 +88,6 @@ components:
         id:
           type: string
           format: uuid
-        employee_id:
-          type: string
         full_name:
           type: string
         email:
@@ -101,15 +96,57 @@ components:
           type: string
         status:
           type: string
-          enum: [available, busy, offline, on_break]
-        current_lat:
+          enum: [active, inactive, on_duty, off_duty, deleted]
+        is_available:
+          type: boolean
+        license_number:
+          type: string
+        license_types:
+          type: array
+          items:
+            type: string
+        current_vehicle_id:
+          type: string
+          format: uuid
+        current_location_lat:
           type: number
-        current_lng:
+        current_location_lng:
           type: number
         rating:
           type: number
         total_deliveries:
           type: integer
+        emergency_contact:
+          type: string
+        emergency_phone:
+          type: string
+        
+    CourierShift:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        courier_id:
+          type: string
+          format: uuid
+        shift_start:
+          type: string
+          format: date-time
+        shift_end:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, paused, completed]
+        orders_delivered:
+          type: integer
+        total_distance:
+          type: number
+        pause_reason:
+          type: string
+        end_notes:
+          type: string
         
     Vehicle:
       type: object
@@ -117,22 +154,46 @@ components:
         id:
           type: string
           format: uuid
-        registration_number:
+        plate_number:
           type: string
-        type:
+        vehicle_type:
           type: string
-          enum: [bike, scooter, car, van, truck]
+          enum: [bicycle, motorcycle, car, van, truck]
         brand:
           type: string
         model:
           type: string
+        year:
+          type: integer
+        color:
+          type: string
         status:
           type: string
-          enum: [available, in_use, maintenance, offline]
-        max_weight_kg:
+          enum: [available, in_use, maintenance, out_of_service, deleted]
+        assigned_to:
+          type: string
+          format: uuid
+        capacity_kg:
           type: number
-        max_volume_m3:
+        capacity_m3:
           type: number
+        fuel_type:
+          type: string
+          enum: [gasoline, diesel, electric, hybrid]
+        fuel_consumption_per_100km:
+          type: number
+        insurance_expiry:
+          type: string
+          format: date
+        registration_expiry:
+          type: string
+          format: date
+        last_maintenance_date:
+          type: string
+          format: date
+        next_maintenance_date:
+          type: string
+          format: date
         
     Route:
       type: object
@@ -151,9 +212,15 @@ components:
           enum: [planned, active, completed, cancelled]
         orders_count:
           type: integer
-        total_distance_km:
+        total_distance:
           type: number
         planned_start_time:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
           type: string
           format: date-time
 
@@ -178,6 +245,8 @@ paths:
                     type: string
                   timestamp:
                     type: string
+                  services:
+                    type: object
                     
   # Auth Service
   /auth/login:
@@ -244,6 +313,33 @@ paths:
         201:
           description: User registered successfully
           
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        200:
+          description: Token refreshed
+          
+  /auth/logout:
+    post:
+      summary: Logout user
+      tags: [Authentication]
+      responses:
+        200:
+          description: Logged out successfully
+          
   /auth/me:
     get:
       summary: Get current user
@@ -259,22 +355,26 @@ paths:
                   user:
                     $ref: '#/components/schemas/User'
                     
-  # Order Service
-  /orders:
+  # Courier Service
+  /couriers:
     get:
-      summary: Get orders list
-      tags: [Orders]
+      summary: Get couriers list
+      tags: [Couriers]
       parameters:
         - name: status
           in: query
           schema:
             type: string
-            enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
-        - name: delivery_status
+            enum: [active, inactive, on_duty, off_duty]
+        - name: vehicle_type
           in: query
           schema:
             type: string
-        - name: courier_id
+        - name: is_available
+          in: query
+          schema:
+            type: boolean
+        - name: search
           in: query
           schema:
             type: string
@@ -290,164 +390,6 @@ paths:
             default: 0
       responses:
         200:
-          description: Orders list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  orders:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Order'
-                  total:
-                    type: integer
-                    
-  /orders/pending:
-    get:
-      summary: Get pending orders
-      tags: [Orders]
-      responses:
-        200:
-          description: Pending orders list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  orders:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Order'
-                      
-  /orders/{id}:
-    get:
-      summary: Get order by ID
-      tags: [Orders]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        200:
-          description: Order details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  order:
-                    $ref: '#/components/schemas/Order'
-                  deliveryHistory:
-                    type: array
-                    items:
-                      type: object
-                      
-  /orders/{id}/assign:
-    post:
-      summary: Assign order to courier
-      tags: [Orders]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [courier_id]
-              properties:
-                courier_id:
-                  type: string
-                  format: uuid
-                route_id:
-                  type: string
-                  format: uuid
-                sequence_number:
-                  type: integer
-      responses:
-        200:
-          description: Order assigned successfully
-          
-  /orders/{id}/status:
-    put:
-      summary: Update order status
-      tags: [Orders]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [status]
-              properties:
-                status:
-                  type: string
-                  enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
-      responses:
-        200:
-          description: Status updated
-          
-  /orders/{id}/delivery-status:
-    put:
-      summary: Update delivery status
-      tags: [Orders]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [delivery_status]
-              properties:
-                delivery_status:
-                  type: string
-                  enum: [awaiting_pickup, picked_up, in_transit, delivered, failed, returned]
-                notes:
-                  type: string
-                photo_url:
-                  type: string
-                signature_url:
-                  type: string
-      responses:
-        200:
-          description: Delivery status updated
-          
-  # Courier Service
-  /couriers:
-    get:
-      summary: Get couriers list
-      tags: [Couriers]
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [available, busy, offline, on_break]
-      responses:
-        200:
           description: Couriers list
           content:
             application/json:
@@ -458,20 +400,56 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Courier'
-                      
-  /couriers/available:
-    get:
-      summary: Get available couriers
+                  total:
+                    type: integer
+                    
+    post:
+      summary: Create new courier
       tags: [Couriers]
+      description: Only managers and admins can create couriers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, phone, email]
+              properties:
+                full_name:
+                  type: string
+                phone:
+                  type: string
+                email:
+                  type: string
+                birth_date:
+                  type: string
+                  format: date
+                license_number:
+                  type: string
+                license_types:
+                  type: array
+                  items:
+                    type: string
+                emergency_contact:
+                  type: string
+                emergency_phone:
+                  type: string
+                address:
+                  type: string
+                bank_account:
+                  type: string
       responses:
-        200:
-          description: Available couriers
+        201:
+          description: Courier created successfully
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Courier'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  courier:
+                    $ref: '#/components/schemas/Courier'
                   
   /couriers/{id}:
     get:
@@ -490,11 +468,54 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Courier'
-                
-  /couriers/{id}/location:
+                type: object
+                properties:
+                  courier:
+                    $ref: '#/components/schemas/Courier'
+                  currentShift:
+                    $ref: '#/components/schemas/CourierShift'
+                  statistics:
+                    type: object
+                    
     put:
-      summary: Update courier location
+      summary: Update courier
+      tags: [Couriers]
+      description: Only managers and admins can update couriers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Courier'
+      responses:
+        200:
+          description: Courier updated successfully
+          
+    delete:
+      summary: Delete courier (soft delete)
+      tags: [Couriers]
+      description: Only admins can delete couriers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Courier deleted successfully
+          
+  /couriers/{id}/assign-vehicle:
+    post:
+      summary: Assign vehicle to courier
       tags: [Couriers]
       parameters:
         - name: id
@@ -509,19 +530,237 @@ paths:
           application/json:
             schema:
               type: object
-              required: [lat, lng]
+              required: [vehicle_id]
               properties:
-                lat:
+                vehicle_id:
+                  type: string
+                  format: uuid
+      responses:
+        200:
+          description: Vehicle assigned successfully
+          
+  /couriers/{id}/remove-vehicle:
+    post:
+      summary: Remove vehicle from courier
+      tags: [Couriers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Vehicle removed successfully
+          
+  /couriers/{id}/availability:
+    patch:
+      summary: Update courier availability
+      tags: [Couriers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_available]
+              properties:
+                is_available:
+                  type: boolean
+      responses:
+        200:
+          description: Availability updated
+          
+  /couriers/{id}/metrics:
+    get:
+      summary: Get courier performance metrics
+      tags: [Couriers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Courier metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courier_id:
+                    type: string
+                  metrics:
+                    type: object
+                  success_rate:
+                    type: number
+                    
+  # Courier Shifts
+  /shifts:
+    get:
+      summary: Get shifts list
+      tags: [Shifts]
+      parameters:
+        - name: courier_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, completed]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Shifts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shifts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CourierShift'
+                      
+  /shifts/start:
+    post:
+      summary: Start courier shift
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courier_id]
+              properties:
+                courier_id:
+                  type: string
+                  format: uuid
+                vehicle_id:
+                  type: string
+                  format: uuid
+                start_lat:
                   type: number
-                lng:
+                start_lng:
                   type: number
-                speed_kmh:
+      responses:
+        201:
+          description: Shift started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  shift_id:
+                    type: string
+                    
+  /shifts/{id}/end:
+    post:
+      summary: End courier shift
+      tags: [Shifts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                end_notes:
+                  type: string
+                end_lat:
                   type: number
-                heading:
+                end_lng:
                   type: number
       responses:
         200:
-          description: Location updated
+          description: Shift ended
+          
+  /shifts/{id}/pause:
+    post:
+      summary: Pause shift
+      tags: [Shifts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        200:
+          description: Shift paused
+          
+  /shifts/{id}/resume:
+    post:
+      summary: Resume shift
+      tags: [Shifts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Shift resumed
+          
+  /shifts/active:
+    get:
+      summary: Get active shifts
+      tags: [Shifts]
+      responses:
+        200:
+          description: Active shifts list
           
   # Vehicle Service
   /vehicles:
@@ -533,12 +772,21 @@ paths:
           in: query
           schema:
             type: string
-            enum: [available, in_use, maintenance, offline]
-        - name: type
+            enum: [available, in_use, maintenance, out_of_service]
+        - name: vehicle_type
           in: query
           schema:
             type: string
-            enum: [bike, scooter, car, van, truck]
+            enum: [bicycle, motorcycle, car, van, truck]
+        - name: assigned_to
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
       responses:
         200:
           description: Vehicles list
@@ -551,84 +799,88 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Vehicle'
-                      
-  /vehicles/available:
-    get:
-      summary: Get available vehicles
-      tags: [Vehicles]
-      responses:
-        200:
-          description: Available vehicles
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Vehicle'
-                  
-  # Route Service
-  /routes:
-    get:
-      summary: Get routes list
-      tags: [Routes]
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [planned, active, completed, cancelled]
-        - name: courier_id
-          in: query
-          schema:
-            type: string
-            format: uuid
-      responses:
-        200:
-          description: Routes list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  routes:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Route'
-                      
+                  total:
+                    type: integer
+                    
     post:
-      summary: Create new route
-      tags: [Routes]
+      summary: Create new vehicle
+      tags: [Vehicles]
+      description: Only managers and admins can create vehicles
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [courier_id, order_ids]
+              required: [plate_number, vehicle_type, brand, model]
               properties:
-                courier_id:
+                plate_number:
                   type: string
-                  format: uuid
-                vehicle_id:
+                vehicle_type:
                   type: string
-                  format: uuid
-                order_ids:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
+                  enum: [bicycle, motorcycle, car, van, truck]
+                brand:
+                  type: string
+                model:
+                  type: string
+                year:
+                  type: integer
+                color:
+                  type: string
+                capacity_kg:
+                  type: number
+                capacity_m3:
+                  type: number
+                fuel_type:
+                  type: string
+                fuel_consumption_per_100km:
+                  type: number
+                insurance_expiry:
+                  type: string
+                  format: date
+                registration_expiry:
+                  type: string
+                  format: date
       responses:
         201:
-          description: Route created
+          description: Vehicle created successfully
+          
+  /vehicles/available:
+    get:
+      summary: Get available vehicles
+      tags: [Vehicles]
+      parameters:
+        - name: vehicle_type
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: Available vehicles
+          
+  /vehicles/stats:
+    get:
+      summary: Get vehicle statistics
+      tags: [Vehicles]
+      responses:
+        200:
+          description: Vehicle statistics
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Route'
-                
-  /routes/{id}/optimize:
-    put:
-      summary: Optimize route
-      tags: [Routes]
+                type: object
+                properties:
+                  overview:
+                    type: object
+                  by_type:
+                    type: array
+                    items:
+                      type: object
+                      
+  /vehicles/{id}:
+    get:
+      summary: Get vehicle by ID
+      tags: [Vehicles]
       parameters:
         - name: id
           in: path
@@ -638,77 +890,122 @@ paths:
             format: uuid
       responses:
         200:
-          description: Route optimized
-          
-  # Analytics Service
-  /analytics/dashboard:
-    get:
-      summary: Get dashboard metrics
-      tags: [Analytics]
-      parameters:
-        - name: date
-          in: query
-          schema:
-            type: string
-            format: date
-      responses:
-        200:
-          description: Dashboard metrics
+          description: Vehicle details
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  orders:
+                  vehicle:
+                    $ref: '#/components/schemas/Vehicle'
+                  maintenance_history:
+                    type: array
+                    items:
+                      type: object
+                  statistics:
                     type: object
-                    properties:
-                      total:
-                        type: integer
-                      pending:
-                        type: integer
-                      in_transit:
-                        type: integer
-                      delivered:
-                        type: integer
-                  couriers:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      available:
-                        type: integer
-                      busy:
-                        type: integer
-                  performance:
-                    type: object
-                    properties:
-                      avg_delivery_time:
-                        type: number
-                      delivery_success_rate:
-                        type: number
-                        
-  # WebSocket Events Documentation
-  /ws:
-    get:
-      summary: WebSocket connection for real-time updates
-      tags: [WebSocket]
-      description: |
-        ## Connection
-        ```javascript
-        const socket = io('ws://localhost:3000');
-        ```
-        
-        ## Events
-        
-        ### Client → Server
-        - `join` - Join user room
-        - `location:update` - Update courier location
-        - `order:statusUpdate` - Update order status
-        
-        ### Server → Client
-        - `courier:location` - Courier location update
-        - `order:updated` - Order status changed
-        - `notification` - System notification
+                    
+    put:
+      summary: Update vehicle
+      tags: [Vehicles]
+      description: Only managers and admins can update vehicles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
       responses:
-        101:
-          description: Switching Protocols
+        200:
+          description: Vehicle updated successfully
+          
+    delete:
+      summary: Delete vehicle (soft delete)
+      tags: [Vehicles]
+      description: Only admins can delete vehicles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Vehicle deleted successfully
+          
+  /vehicles/{id}/assign:
+    post:
+      summary: Assign vehicle to courier
+      tags: [Vehicles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courier_id]
+              properties:
+                courier_id:
+                  type: string
+                  format: uuid
+      responses:
+        200:
+          description: Vehicle assigned successfully
+          
+  /vehicles/{id}/release:
+    post:
+      summary: Release vehicle from courier
+      tags: [Vehicles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Vehicle released successfully
+          
+  /vehicles/{id}/status:
+    patch:
+      summary: Update vehicle status
+      tags: [Vehicles]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [available, in_use, maintenance, out_of_service]
+                notes:
+                  type: string
+      responses:
+        200:
+          description: Status updated successfully
