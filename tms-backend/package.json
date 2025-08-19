@@ -1,0 +1,37 @@
+{
+  "name": "tms-backend",
+  "version": "1.0.0",
+  "description": "TMS Backend Microservices",
+  "private": true,
+  "workspaces": [
+    "api-gateway",
+    "services/*",
+    "shared/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:gateway\" \"npm run dev:auth\" \"npm run dev:order\" \"npm run dev:courier\" \"npm run dev:vehicle\" \"npm run dev:route\"",
+    "dev:gateway": "cd api-gateway && npm run dev",
+    "dev:auth": "cd services/auth && npm run dev",
+    "dev:order": "cd services/order && npm run dev",
+    "dev:courier": "cd services/courier && npm run dev",
+    "dev:vehicle": "cd services/vehicle && npm run dev",
+    "dev:route": "cd services/route && npm run dev",
+    "dev:location": "cd services/location && npm run dev",
+    "dev:analytics": "cd services/analytics && npm run dev",
+    "dev:notification": "cd services/notification && npm run dev",
+    "build": "npm run build:all",
+    "build:all": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

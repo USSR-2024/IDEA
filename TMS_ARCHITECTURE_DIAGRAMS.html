@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMS Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        .diagram-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .mermaid {
+            text-align: center;
+        }
+        .description {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #3498db;
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+    </style>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#e1f5fe',
+                primaryBorderColor: '#01579b',
+                lineColor: '#333',
+                secondaryColor: '#fff3e0',
+                tertiaryColor: '#f3e5f5'
+            }
+        });
+    </script>
+</head>
+<body>
+    <h1>🏗️ TMS System Architecture Diagrams</h1>
+    
+    <div class="diagram-container">
+        <h2>1. Общая архитектура системы</h2>
+        <div class="description">
+            <strong>Описание:</strong> Полная архитектура TMS с микросервисами, показывающая все компоненты системы и их взаимосвязи.
+        </div>
+        
+        <div class="mermaid">
+graph TB
+    subgraph "External Systems"
+        OMS[OMS System<br/>Order Management]
+        MAP[Maps API<br/>Google/Mapbox]
+    end
+    
+    subgraph "Frontend Layer"
+        WEB[Web Application<br/>React + TypeScript]
+        MOBILE[Mobile App<br/>React Native]
+    end
+    
+    subgraph "API Gateway Layer"
+        GATEWAY[API Gateway<br/>:3000]
+        WS[WebSocket Server<br/>Real-time updates]
+    end
+    
+    subgraph "Microservices Layer"
+        AUTH[Auth Service<br/>:3001]
+        ORDER[Order Service<br/>:3002]
+        COURIER[Courier Service<br/>:3003]
+        VEHICLE[Vehicle Service<br/>:3004]
+        ROUTE[Route Service<br/>:3005]
+        LOCATION[Location Service<br/>:3006]
+        ANALYTICS[Analytics Service<br/>:3007]
+        NOTIFICATION[Notification Service<br/>:3008]
+    end
+    
+    subgraph "Data Layer"
+        SUPABASE[(Supabase<br/>PostgreSQL + PostGIS)]
+        REDIS[(Redis<br/>Cache)]
+        S3[Storage<br/>Photos/Documents]
+    end
+    
+    %% Frontend connections
+    WEB --> GATEWAY
+    MOBILE --> GATEWAY
+    WEB -.->|WebSocket| WS
+    MOBILE -.->|WebSocket| WS
+    
+    %% Gateway to services
+    GATEWAY --> AUTH
+    GATEWAY --> ORDER
+    GATEWAY --> COURIER
+    GATEWAY --> VEHICLE
+    GATEWAY --> ROUTE
+    GATEWAY --> LOCATION
+    GATEWAY --> ANALYTICS
+    GATEWAY --> NOTIFICATION
+    
+    %% External integrations
+    OMS -.->|Webhook| ORDER
+    ORDER -.->|Status Update| OMS
+    ROUTE --> MAP
+    LOCATION --> MAP
+    
+    %% Services to Database
+    AUTH --> SUPABASE
+    ORDER --> SUPABASE
+    COURIER --> SUPABASE
+    VEHICLE --> SUPABASE
+    ROUTE --> SUPABASE
+    LOCATION --> SUPABASE
+    ANALYTICS --> SUPABASE
+    NOTIFICATION --> SUPABASE
+    
+    %% Cache connections
+    AUTH --> REDIS
+    ORDER --> REDIS
+    LOCATION --> REDIS
+    
+    %% Storage
+    ORDER --> S3
+    COURIER --> S3
+    
+    style GATEWAY fill:#e1f5fe
+    style SUPABASE fill:#fff3e0
+    style OMS fill:#f3e5f5
+    style WEB fill:#e8f5e9
+    style MOBILE fill:#e8f5e9
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e1f5fe;"></div>
+                <span>API Gateway</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fff3e0;"></div>
+                <span>Database</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f3e5f5;"></div>
+                <span>External System</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e8f5e9;"></div>
+                <span>Frontend</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>2. OMS Integration Flow</h2>
+        <div class="description">
+            <strong>Описание:</strong> Последовательность взаимодействия между OMS и TMS для управления заказами.
+        </div>
+        
+        <div class="mermaid">
+sequenceDiagram
+    participant OMS
+    participant OrderService
+    participant Database
+    participant Manager
+    participant Courier
+    
+    Note over OMS,Courier: Процесс обработки заказа
+    
+    OMS->>OrderService: Webhook: New Order<br/>(ready_for_delivery)
+    OrderService->>Database: Save Order<br/>(status: pending)
+    OrderService-->>OMS: Confirmation (200 OK)
+    
+    loop Periodic Sync (every 5 min)
+        OrderService->>OMS: GET /api/orders?status=ready
+        OMS-->>OrderService: Orders data array
+        OrderService->>Database: Upsert orders
+    end
+    
+    Manager->>OrderService: Assign courier to order
+    OrderService->>Database: Update status: assigned
+    OrderService->>Courier: Notification: New delivery
+    
+    Courier->>OrderService: Accept delivery
+    OrderService->>Database: Status: picked_up
+    OrderService->>OMS: PUT /orders/{id}/status
+    OMS-->>OrderService: Confirmation
+    
+    Courier->>OrderService: Start delivery
+    OrderService->>Database: Status: in_transit
+    
+    Courier->>OrderService: Complete delivery
+    OrderService->>Database: Status: delivered
+    OrderService->>OMS: PUT /orders/{id}/status
+    OMS-->>OrderService: Confirmation
+    
+    Note over OMS,Courier: Заказ успешно доставлен
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>3. Delivery Process State Machine</h2>
+        <div class="description">
+            <strong>Описание:</strong> Состояния заказа в процессе доставки и возможные переходы между ними.
+        </div>
+        
+        <div class="mermaid">
+stateDiagram-v2
+    [*] --> Pending: Order from OMS
+    
+    Pending --> Assigned: Assign Courier
+    Pending --> Cancelled: Cancel Order
+    
+    Assigned --> PickedUp: Courier Picks Up
+    Assigned --> Cancelled: Cancel Order
+    
+    PickedUp --> InTransit: Start Delivery
+    PickedUp --> Failed: Pickup Failed
+    
+    InTransit --> Delivered: Complete Delivery
+    InTransit --> Failed: Delivery Failed
+    
+    Failed --> Assigned: Retry Delivery
+    Failed --> Returned: Return to Warehouse
+    
+    Delivered --> [*]: Success
+    Cancelled --> [*]: Cancelled
+    Returned --> [*]: Returned
+    
+    note right of Pending
+        Initial state when order
+        received from OMS
+    end note
+    
+    note right of InTransit
+        Courier is on the way
+        to customer location
+    end note
+    
+    note left of Delivered
+        Order successfully
+        delivered to customer
+    end note
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>4. Database Schema (Simplified)</h2>
+        <div class="description">
+            <strong>Описание:</strong> Упрощенная схема основных таблиц базы данных и их связей.
+        </div>
+        
+        <div class="mermaid">
+erDiagram
+    USERS ||--o{ ROUTES : creates
+    COURIERS ||--o{ ROUTES : assigned_to
+    COURIERS ||--o{ COURIER_SHIFTS : has
+    VEHICLES ||--o{ ROUTES : uses
+    VEHICLES ||--o{ COURIER_SHIFTS : assigned_to
+    STORES ||--o{ ORDERS : ships_from
+    ORDERS ||--o{ ROUTE_ORDERS : included_in
+    ROUTES ||--o{ ROUTE_ORDERS : contains
+    COURIERS ||--o{ LOCATION_HISTORY : tracks
+    
+    USERS {
+        uuid id PK
+        string email UK
+        string full_name
+        enum role
+        string phone
+        boolean is_active
+    }
+    
+    COURIERS {
+        uuid id PK
+        string employee_id UK
+        string full_name
+        string email UK
+        string phone
+        enum status
+        decimal rating
+        integer total_deliveries
+        geography current_location
+    }
+    
+    ORDERS {
+        uuid id PK
+        string oms_order_id UK
+        string order_number
+        string customer_name
+        string delivery_address
+        geography delivery_location
+        enum status
+        enum delivery_status
+        decimal order_value
+        boolean is_priority
+    }
+    
+    ROUTES {
+        uuid id PK
+        string route_number UK
+        uuid courier_id FK
+        uuid vehicle_id FK
+        enum status
+        integer orders_count
+        decimal total_distance_km
+        timestamp planned_start_time
+    }
+    
+    ROUTE_ORDERS {
+        uuid id PK
+        uuid route_id FK
+        uuid order_id FK
+        integer sequence_number
+        enum delivery_status
+        timestamp completed_at
+    }
+    
+    VEHICLES {
+        uuid id PK
+        string registration_number UK
+        enum type
+        enum status
+        decimal max_weight_kg
+        decimal max_volume_m3
+    }
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>5. Real-time Communication Flow</h2>
+        <div class="description">
+            <strong>Описание:</strong> Схема real-time взаимодействия через WebSocket для отслеживания курьеров.
+        </div>
+        
+        <div class="mermaid">
+graph LR
+    subgraph "Courier App"
+        GPS[GPS Module]
+        APP[Mobile App]
+    end
+    
+    subgraph "API Gateway"
+        WS_SERVER[WebSocket Server]
+        ROUTER[Event Router]
+    end
+    
+    subgraph "Services"
+        LOC_SERVICE[Location Service]
+        NOTIF_SERVICE[Notification Service]
+    end
+    
+    subgraph "Manager Dashboard"
+        MAP_VIEW[Map View]
+        ALERTS[Alerts Panel]
+    end
+    
+    GPS -->|Location Data| APP
+    APP -->|emit: location:update| WS_SERVER
+    WS_SERVER --> ROUTER
+    ROUTER --> LOC_SERVICE
+    LOC_SERVICE -->|Store in DB| DB[(Database)]
+    
+    ROUTER -->|broadcast| MAP_VIEW
+    ROUTER -->|if alert| NOTIF_SERVICE
+    NOTIF_SERVICE -->|push| ALERTS
+    
+    style WS_SERVER fill:#ffeb3b
+    style MAP_VIEW fill:#4caf50
+    style DB fill:#2196f3
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>6. Service Dependencies</h2>
+        <div class="description">
+            <strong>Описание:</strong> Зависимости между микросервисами и shared модулями.
+        </div>
+        
+        <div class="mermaid">
+graph TD
+    subgraph "Shared Modules"
+        CONFIG[@tms/config]
+        DB[@tms/database]
+        AUTH_MW[@tms/auth-middleware]
+        UTILS[@tms/utils]
+    end
+    
+    subgraph "Microservices"
+        AUTH_SVC[Auth Service]
+        ORDER_SVC[Order Service]
+        COURIER_SVC[Courier Service]
+        VEHICLE_SVC[Vehicle Service]
+        ROUTE_SVC[Route Service]
+        LOC_SVC[Location Service]
+        ANALYTICS_SVC[Analytics Service]
+        NOTIF_SVC[Notification Service]
+    end
+    
+    CONFIG --> AUTH_SVC
+    CONFIG --> ORDER_SVC
+    CONFIG --> COURIER_SVC
+    CONFIG --> VEHICLE_SVC
+    CONFIG --> ROUTE_SVC
+    CONFIG --> LOC_SVC
+    CONFIG --> ANALYTICS_SVC
+    CONFIG --> NOTIF_SVC
+    
+    DB --> AUTH_SVC
+    DB --> ORDER_SVC
+    DB --> COURIER_SVC
+    DB --> VEHICLE_SVC
+    DB --> ROUTE_SVC
+    DB --> LOC_SVC
+    DB --> ANALYTICS_SVC
+    DB --> NOTIF_SVC
+    
+    AUTH_MW --> ORDER_SVC
+    AUTH_MW --> COURIER_SVC
+    AUTH_MW --> ROUTE_SVC
+    
+    style CONFIG fill:#ffd54f
+    style DB fill:#ffd54f
+    style AUTH_MW fill:#ffd54f
+    style UTILS fill:#ffd54f
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>7. Deployment Architecture</h2>
+        <div class="description">
+            <strong>Описание:</strong> Архитектура развертывания в production окружении.
+        </div>
+        
+        <div class="mermaid">
+graph TB
+    subgraph "Client Layer"
+        BROWSER[Web Browser]
+        MOBILE_APP[Mobile App]
+    end
+    
+    subgraph "CDN"
+        STATIC[Static Assets<br/>JS, CSS, Images]
+    end
+    
+    subgraph "Load Balancer"
+        LB[NGINX/ALB]
+    end
+    
+    subgraph "Container Orchestration"
+        subgraph "API Gateway Pods"
+            GW1[Gateway-1]
+            GW2[Gateway-2]
+            GW3[Gateway-3]
+        end
+        
+        subgraph "Service Pods"
+            SVC1[Services<br/>Replicas: 2-5]
+        end
+    end
+    
+    subgraph "Managed Services"
+        SUPABASE_PROD[(Supabase<br/>Production)]
+        REDIS_CLUSTER[(Redis Cluster)]
+        S3_BUCKET[S3 Storage]
+    end
+    
+    subgraph "Monitoring"
+        METRICS[Prometheus<br/>Grafana]
+        LOGS[ELK Stack]
+    end
+    
+    BROWSER --> CDN
+    BROWSER --> LB
+    MOBILE_APP --> LB
+    
+    CDN --> STATIC
+    
+    LB --> GW1
+    LB --> GW2
+    LB --> GW3
+    
+    GW1 --> SVC1
+    GW2 --> SVC1
+    GW3 --> SVC1
+    
+    SVC1 --> SUPABASE_PROD
+    SVC1 --> REDIS_CLUSTER
+    SVC1 --> S3_BUCKET
+    
+    SVC1 -.-> METRICS
+    SVC1 -.-> LOGS
+    
+    style LB fill:#ff9800
+    style SUPABASE_PROD fill:#4caf50
+    style METRICS fill:#9c27b0
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>8. Информация о системе</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px;">
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 5px;">
+                <h3 style="margin-top: 0; color: #1976d2;">📊 Масштаб</h3>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>8 микросервисов</li>
+                    <li>11 таблиц БД</li>
+                    <li>18 курьеров</li>
+                    <li>3 типа транспорта</li>
+                </ul>
+            </div>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 5px;">
+                <h3 style="margin-top: 0; color: #388e3c;">🔧 Технологии</h3>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Node.js + TypeScript</li>
+                    <li>PostgreSQL + PostGIS</li>
+                    <li>React + Redux</li>
+                    <li>WebSocket (Socket.io)</li>
+                </ul>
+            </div>
+            <div style="background: #fff3e0; padding: 15px; border-radius: 5px;">
+                <h3 style="margin-top: 0; color: #f57c00;">🚀 Производительность</h3>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Response time < 200ms</li>
+                    <li>1000+ concurrent users</li>
+                    <li>Real-time updates</li>
+                    <li>99.9% uptime SLA</li>
+                </ul>
+            </div>
+            <div style="background: #fce4ec; padding: 15px; border-radius: 5px;">
+                <h3 style="margin-top: 0; color: #c2185b;">🔗 Интеграции</h3>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>OMS (webhooks)</li>
+                    <li>Google Maps API</li>
+                    <li>Supabase Auth</li>
+                    <li>S3 Storage</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #666;">
+        <p>TMS Architecture Documentation - Version 1.0.0</p>
+        <p>Generated: 2025-01-19</p>
+    </footer>
+</body>
+</html>

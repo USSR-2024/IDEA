@@ -1,0 +1,714 @@
+openapi: 3.0.0
+info:
+  title: TMS API Gateway
+  description: Transport Management System API Documentation
+  version: 1.0.0
+  contact:
+    name: TMS Support
+    email: support@tms-logistics.ru
+    
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: https://api.tms-logistics.ru/api
+    description: Production server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, manager, dispatcher, viewer]
+        phone:
+          type: string
+          
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        oms_order_id:
+          type: string
+        order_number:
+          type: string
+        customer_name:
+          type: string
+        customer_phone:
+          type: string
+        delivery_address:
+          type: string
+        delivery_lat:
+          type: number
+        delivery_lng:
+          type: number
+        status:
+          type: string
+          enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
+        delivery_status:
+          type: string
+          enum: [awaiting_pickup, picked_up, in_transit, delivered, failed, returned]
+        order_value:
+          type: number
+        is_priority:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          
+    Courier:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [available, busy, offline, on_break]
+        current_lat:
+          type: number
+        current_lng:
+          type: number
+        rating:
+          type: number
+        total_deliveries:
+          type: integer
+        
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        registration_number:
+          type: string
+        type:
+          type: string
+          enum: [bike, scooter, car, van, truck]
+        brand:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+          enum: [available, in_use, maintenance, offline]
+        max_weight_kg:
+          type: number
+        max_volume_m3:
+          type: number
+        
+    Route:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        route_number:
+          type: string
+        courier_id:
+          type: string
+        vehicle_id:
+          type: string
+        status:
+          type: string
+          enum: [planned, active, completed, cancelled]
+        orders_count:
+          type: integer
+        total_distance_km:
+          type: number
+        planned_start_time:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [System]
+      security: []
+      responses:
+        200:
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                    
+  # Auth Service
+  /auth/login:
+    post:
+      summary: User login
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                  refreshToken:
+                    type: string
+                    
+  /auth/register:
+    post:
+      summary: Register new user
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                full_name:
+                  type: string
+                phone:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, manager, dispatcher, viewer]
+      responses:
+        201:
+          description: User registered successfully
+          
+  /auth/me:
+    get:
+      summary: Get current user
+      tags: [Authentication]
+      responses:
+        200:
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                    
+  # Order Service
+  /orders:
+    get:
+      summary: Get orders list
+      tags: [Orders]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
+        - name: delivery_status
+          in: query
+          schema:
+            type: string
+        - name: courier_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  total:
+                    type: integer
+                    
+  /orders/pending:
+    get:
+      summary: Get pending orders
+      tags: [Orders]
+      responses:
+        200:
+          description: Pending orders list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                      
+  /orders/{id}:
+    get:
+      summary: Get order by ID
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Order details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order:
+                    $ref: '#/components/schemas/Order'
+                  deliveryHistory:
+                    type: array
+                    items:
+                      type: object
+                      
+  /orders/{id}/assign:
+    post:
+      summary: Assign order to courier
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courier_id]
+              properties:
+                courier_id:
+                  type: string
+                  format: uuid
+                route_id:
+                  type: string
+                  format: uuid
+                sequence_number:
+                  type: integer
+      responses:
+        200:
+          description: Order assigned successfully
+          
+  /orders/{id}/status:
+    put:
+      summary: Update order status
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, assigned, picked_up, in_transit, delivered, failed, cancelled]
+      responses:
+        200:
+          description: Status updated
+          
+  /orders/{id}/delivery-status:
+    put:
+      summary: Update delivery status
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delivery_status]
+              properties:
+                delivery_status:
+                  type: string
+                  enum: [awaiting_pickup, picked_up, in_transit, delivered, failed, returned]
+                notes:
+                  type: string
+                photo_url:
+                  type: string
+                signature_url:
+                  type: string
+      responses:
+        200:
+          description: Delivery status updated
+          
+  # Courier Service
+  /couriers:
+    get:
+      summary: Get couriers list
+      tags: [Couriers]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, busy, offline, on_break]
+      responses:
+        200:
+          description: Couriers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  couriers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Courier'
+                      
+  /couriers/available:
+    get:
+      summary: Get available couriers
+      tags: [Couriers]
+      responses:
+        200:
+          description: Available couriers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Courier'
+                  
+  /couriers/{id}:
+    get:
+      summary: Get courier by ID
+      tags: [Couriers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Courier details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Courier'
+                
+  /couriers/{id}/location:
+    put:
+      summary: Update courier location
+      tags: [Couriers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lng]
+              properties:
+                lat:
+                  type: number
+                lng:
+                  type: number
+                speed_kmh:
+                  type: number
+                heading:
+                  type: number
+      responses:
+        200:
+          description: Location updated
+          
+  # Vehicle Service
+  /vehicles:
+    get:
+      summary: Get vehicles list
+      tags: [Vehicles]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, in_use, maintenance, offline]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [bike, scooter, car, van, truck]
+      responses:
+        200:
+          description: Vehicles list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vehicles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vehicle'
+                      
+  /vehicles/available:
+    get:
+      summary: Get available vehicles
+      tags: [Vehicles]
+      responses:
+        200:
+          description: Available vehicles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vehicle'
+                  
+  # Route Service
+  /routes:
+    get:
+      summary: Get routes list
+      tags: [Routes]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [planned, active, completed, cancelled]
+        - name: courier_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Routes list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  routes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Route'
+                      
+    post:
+      summary: Create new route
+      tags: [Routes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courier_id, order_ids]
+              properties:
+                courier_id:
+                  type: string
+                  format: uuid
+                vehicle_id:
+                  type: string
+                  format: uuid
+                order_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        201:
+          description: Route created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Route'
+                
+  /routes/{id}/optimize:
+    put:
+      summary: Optimize route
+      tags: [Routes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Route optimized
+          
+  # Analytics Service
+  /analytics/dashboard:
+    get:
+      summary: Get dashboard metrics
+      tags: [Analytics]
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      pending:
+                        type: integer
+                      in_transit:
+                        type: integer
+                      delivered:
+                        type: integer
+                  couriers:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      available:
+                        type: integer
+                      busy:
+                        type: integer
+                  performance:
+                    type: object
+                    properties:
+                      avg_delivery_time:
+                        type: number
+                      delivery_success_rate:
+                        type: number
+                        
+  # WebSocket Events Documentation
+  /ws:
+    get:
+      summary: WebSocket connection for real-time updates
+      tags: [WebSocket]
+      description: |
+        ## Connection
+        ```javascript
+        const socket = io('ws://localhost:3000');
+        ```
+        
+        ## Events
+        
+        ### Client → Server
+        - `join` - Join user room
+        - `location:update` - Update courier location
+        - `order:statusUpdate` - Update order status
+        
+        ### Server → Client
+        - `courier:location` - Courier location update
+        - `order:updated` - Order status changed
+        - `notification` - System notification
+      responses:
+        101:
+          description: Switching Protocols
