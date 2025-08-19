@@ -1,0 +1,246 @@
+version: '3.8'
+
+services:
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: tms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - tms-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./tms-backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: tms-api-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:4001
+      ORDER_SERVICE_URL: http://order-service:4002
+      COURIER_SERVICE_URL: http://courier-service:4003
+      ROUTE_SERVICE_URL: http://route-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      ANALYTICS_SERVICE_URL: http://analytics-service:4006
+      VEHICLE_SERVICE_URL: http://vehicle-service:4007
+      LOCATION_SERVICE_URL: http://location-service:4008
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      - redis
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/api-gateway:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./tms-backend/services/auth
+      dockerfile: Dockerfile
+    container_name: tms-auth-service
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: development
+      PORT: 4001
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      JWT_REFRESH_EXPIRES_IN: 30d
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/auth:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Order Service
+  order-service:
+    build:
+      context: ./tms-backend/services/order
+      dockerfile: Dockerfile
+    container_name: tms-order-service
+    ports:
+      - "4002:4002"
+    environment:
+      NODE_ENV: development
+      PORT: 4002
+      DATABASE_URL: ${DATABASE_URL}
+      OMS_API_URL: ${OMS_API_URL}
+      OMS_API_KEY: ${OMS_API_KEY}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/order:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Courier Service
+  courier-service:
+    build:
+      context: ./tms-backend/services/courier
+      dockerfile: Dockerfile
+    container_name: tms-courier-service
+    ports:
+      - "4003:4003"
+    environment:
+      NODE_ENV: development
+      PORT: 4003
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/courier:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Route Service
+  route-service:
+    build:
+      context: ./tms-backend/services/route
+      dockerfile: Dockerfile
+    container_name: tms-route-service
+    ports:
+      - "4004:4004"
+    environment:
+      NODE_ENV: development
+      PORT: 4004
+      DATABASE_URL: ${DATABASE_URL}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/route:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./tms-backend/services/notification
+      dockerfile: Dockerfile
+    container_name: tms-notification-service
+    ports:
+      - "4005:4005"
+    environment:
+      NODE_ENV: development
+      PORT: 4005
+      DATABASE_URL: ${DATABASE_URL}
+      EMAIL_FROM: ${EMAIL_FROM}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/notification:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./tms-backend/services/analytics
+      dockerfile: Dockerfile
+    container_name: tms-analytics-service
+    ports:
+      - "4006:4006"
+    environment:
+      NODE_ENV: development
+      PORT: 4006
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/analytics:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Vehicle Service
+  vehicle-service:
+    build:
+      context: ./tms-backend/services/vehicle
+      dockerfile: Dockerfile
+    container_name: tms-vehicle-service
+    ports:
+      - "4007:4007"
+    environment:
+      NODE_ENV: development
+      PORT: 4007
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/vehicle:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Location Service
+  location-service:
+    build:
+      context: ./tms-backend/services/location
+      dockerfile: Dockerfile
+    container_name: tms-location-service
+    ports:
+      - "4008:4008"
+    environment:
+      NODE_ENV: development
+      PORT: 4008
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-backend/services/location:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Frontend (React App)
+  frontend:
+    build:
+      context: ./tms-frontend
+      dockerfile: Dockerfile
+    container_name: tms-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:4000
+      REACT_APP_WS_URL: ws://localhost:4000
+    networks:
+      - tms-network
+    volumes:
+      - ./tms-frontend:/app
+      - /app/node_modules
+    command: npm start
+
+networks:
+  tms-network:
+    driver: bridge
+
+volumes:
+  redis-data:
